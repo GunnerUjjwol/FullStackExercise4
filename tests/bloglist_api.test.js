@@ -23,33 +23,67 @@ const initialBlogs = [
     __v: 0,
   },
 ];
+
+let token;
+beforeAll( async() => {
+  await api.post("/api/users").send({
+    username: "GunnerUjjwol",
+    password: "12345678",
+  });
+  const response = await api.post("/api/login").send({
+    username: "GunnerUjjwol",
+    password: "12345678",
+  });
+  token = response.body.token;
+})
 beforeEach(async () => {
   await Blog.deleteMany({});
   const blogObjects = initialBlogs.map((blog) => new Blog(blog));
   const promiseArray = blogObjects.map((blog) => blog.save());
   await Promise.all(promiseArray);
+  
 });
 test("blogs are returned as json", async () => {
   await api
     .get("/api/blogs")
+    .set("Authorization", `Bearer ${token}`)
     .expect(200)
     .expect("Content-Type", /application\/json/);
 });
 
 test("there are zero blogs", async () => {
-  const response = await api.get("/api/blogs");
+  const response = await api
+    .get("/api/blogs")
+    .set("Authorization", `Bearer ${token}`);
   expect(response.body).toHaveLength(initialBlogs.length);
 });
 
 test("a specific blog is within the returned blogs", async () => {
-  const response = await api.get("/api/blogs");
+  const response = await api
+    .get("/api/blogs")
+    .set("Authorization", `Bearer ${token}`);
   const blogTitles = response.body.map((r) => r.title);
   expect(blogTitles).toContain("React patterns");
 });
 
 test("id Property defined", async () => {
-  const response = await api.get("/api/blogs");
+  const response = await api
+    .get("/api/blogs")
+    .set("Authorization", `Bearer ${token}`);
   expect(response.body[0].id).toBeDefined();
+});
+
+test('Post request without authorization is rejected',async () => {
+  const newBlog = {
+    title: "Ujjwol Test Note123",
+    author: "Ujjwol Dandekhya",
+    url: "https://reactpatterns.com/",
+    likes: 70,
+  };
+  await api
+  .post("/api/blogs")
+    .send(newBlog)
+    .expect(401)
 });
 
 test("a valid blog can be added", async () => {
@@ -59,14 +93,14 @@ test("a valid blog can be added", async () => {
     url: "https://reactpatterns.com/",
     likes: 70,
   };
-
   await api
     .post("/api/blogs")
+    .set("Authorization", `Bearer ${token}`)
     .send(newBlog)
     .expect(201)
     .expect("Content-Type", /application\/json/);
 
-  const response = await api.get("/api/blogs");
+  const response = await api.get("/api/blogs").set('Authorization', `Bearer ${token}`);
 
   const titles = response.body.map((r) => r.title);
 
@@ -85,7 +119,10 @@ test("blog without likes is defaulted to zero", async () => {
     newBlog.likes = 0;
   }
 
-  const response = await api.post("/api/blogs").send(newBlog);
+  const response = await api
+    .post("/api/blogs")
+    .set("Authorization", `Bearer ${token}`)
+    .send(newBlog);
   expect(response.body.likes).toBe(0);
 });
 
@@ -94,33 +131,52 @@ test("blog without title and url is not added", async () => {
     author: "Ujjwol Dandekhya",
   };
 
-  await api.post("/api/blogs").send(newBlog).expect(400);
+  await api
+    .post("/api/blogs")
+    .set("Authorization", `Bearer ${token}`)
+    .send(newBlog)
+    .expect(400);
 
-  const response = await api.get("/api/blogs");
+  const response = await api
+    .get("/api/blogs")
+    .set("Authorization", `Bearer ${token}`);
 
   expect(response.body).toHaveLength(initialBlogs.length);
 });
 
-test('deletion succeeds with status code 204 if id is valid', async () => {
-    let blogsAtStart = await api.get("/api/blogs");
-    blogsAtStart = blogsAtStart.body;
-    const blogToDelete = blogsAtStart[0]
+test("deletion succeeds with status code 204 if id is valid", async () => {
+  const newBlog = {
+    title: "Ujjwol Test Note",
+    author: "Ujjwol Dandekhya",
+    url: "https://reactpatterns.com/",
+    likes: 70,
+  };
+  const response = await api
+    .post("/api/blogs")
+    .send(newBlog)
+    .set("Authorization", `Bearer ${token}`);
+  let blogsAtStart = await api
+    .get("/api/blogs")
+    .set("Authorization", `Bearer ${token}`);
+  blogsAtStart = blogsAtStart.body;
+  const blogToDelete = response.body;
 
-    await api
-      .delete(`/api/blogs/${blogToDelete.id}`)
-      .expect(204)
+  await api
+    .delete(`/api/blogs/${blogToDelete.id}`)
+    .set("Authorization", `Bearer ${token}`)
+    .expect(204);
 
-    let blogsAtEnd = await api.get("/api/blogs");
-    blogsAtEnd = blogsAtEnd.body;
+  let blogsAtEnd = await api
+    .get("/api/blogs")
+    .set("Authorization", `Bearer ${token}`);
+  blogsAtEnd = blogsAtEnd.body;
 
-    expect(blogsAtEnd).toHaveLength(
-      initialBlogs.length - 1
-    )
+  expect(blogsAtEnd).toHaveLength(initialBlogs.length + 1 - 1);
 
-    const titles = blogsAtEnd.map(r => r.title)
+  const titles = blogsAtEnd.map((r) => r.title);
 
-    expect(titles).not.toContain(blogToDelete.title)
-  })
+  expect(titles).not.toContain(blogToDelete.title);
+});
 
 afterAll(() => {
   mongoose.connection.close();
